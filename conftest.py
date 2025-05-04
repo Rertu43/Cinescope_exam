@@ -1,8 +1,6 @@
 import pytest
 import requests
-from datetime import datetime
-from faker import Faker
-from constants import BASE_URL, REGISTER_URL
+from utils.datagenerator import DataGenetator
 
 from api.api_manager import APIManager
 
@@ -27,59 +25,54 @@ def api_manager(session):
 
 @pytest.fixture(scope="session")
 def new_film():
-    created_at = datetime.utcnow().isoformat(timespec="milliseconds") + "Z"
-    fake = Faker()
-    return {
-        "name": fake.sentence(nb_words=3),
-        "price": fake.random_int(min=100, max=1000),
-        "description": fake.text(),
-        "imageUrl": "https://placekitten.com/300/300",
-        "location": "MSK",
-        "published": True,
-        "genreId": fake.random_int(min=1, max=10)  # предполагаем, что жанры от 1 до 10
-    }
-
+    return DataGenetator.data_for_film()
 
 @pytest.fixture(scope="session")
 def new_user():
     """
     Fixture for creating a new user
     """
-    faker = Faker()
-    email = faker.email()
-    name = faker.name()
-    password = faker.password()
+    return DataGenetator.data_for_user()
 
-    return {
-        "email": email,
-        "fullName": name,
-        "password": password,
-        "passwordRepeat": password,
-    }
+@pytest.fixture
+def user_session():
+    user_pool = []
+
+    def _create_user_session():
+        session = requests.Session()
+        user_session = APIManager(session)
+        user_pool.append(user_session)
+        return user_session
+
+    yield _create_user_session
+
+    for user in user_pool:
+        user.close_session()
+
+@pytest.fixture(scope="function")
+def create_film(new_film, api_manager: APIManager):
+    api_manager.auth_api.authenticate()
+    response = api_manager.movies_api.creating_new_movie(**new_film).json()
+
+    yield response
+
+    id_film = response.get("id")
+    assert id_film is not None, "Problems with getting id"
+    response = api_manager.movies_api.delete_movie(id_film)
 
 
-@pytest.fixture(scope="session")
-def auth_session(new_user):
+@pytest.fixture(scope="function")
+def movie_lifecycle(new_film, api_manager: APIManager):
 
-    log_url = f"{REGISTER_URL}/login"
-    log_payload = {
-        "email": "test-admin@mail.com",
-        "password": "KcLMmxkJMjBD1",
-    }
-    response = requests.post(log_url, json=log_payload)
-    token = response.json().get("accessToken")
-    assert token is not None, "Error with token"
-    assert response.status_code == 200, "Error with login"
+    api_manager.auth_api.authenticate()
 
+    create_response = api_manager.movies_api.creating_new_movie(**new_film).json()
+    film_id = create_response.get("id")
 
-    return token
+    try:
+        api_manager.movies_api.get_movie_by_id(film_id)
 
-@pytest.fixture(scope="session")
-def create_film(api_manager: APIManager, new_film, auth_session):
-    response = api_manager.movies_api.creating_new_movie(auth_session, **new_film)
+    finally:
+        api_manager.movies_api.delete_movie(film_id)
 
-    return {
-        "response": response,
-        "film_id": response.json().get("id"),
-    }
-
+        api_manager.movies_api.get_movie_by_id(film_id, expected_status_code=404)

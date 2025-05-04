@@ -1,3 +1,4 @@
+from api.auth_api import AuthApi
 from api.moviesAPI import MoviesAPI
 
 
@@ -8,3 +9,4 @@ class APIManager:
     def __init__(self, session):
         self.session = session
         self.movies_api = MoviesAPI(session)
+        self.auth_api = AuthApi(session)

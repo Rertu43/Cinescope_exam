@@ -20,7 +20,7 @@ class CustomRequester():
         base_url = f"{self.base_url}{endpoint}"
         headers = kwargs.pop("headers", None)
 
-        response = requests.request(
+        response = self.session.request(
             method=method,
             url=base_url,
             json=data,
@@ -48,3 +48,9 @@ class CustomRequester():
         print("==============RESPONSE==============")
         print(response.status_code)
         print(response.text)
+
+    def _update_session_headers(self, **headers):
+        """
+        :param session: Object request.Session, предоставленный API-классом
+        """
+        self.session.headers.update(headers)
